@@ -226,6 +226,17 @@ python -m botmanager set-entrypoint chat-bot src/bot.py
 
 The manager will update the stored `entrypoint` for that bot. It will warn if the path you provide does not currently exist on disk.
 
+### Rotate a bot's Discord token
+
+If a bot's Discord token changes (for example, you reset it in the Developer Portal), you can update the stored token without re-adding the bot:
+
+```bash
+python -m botmanager set-token chat-bot
+python -m botmanager set-token 1
+```
+
+You will be prompted (hidden, with confirmation) for the new token. After updating, restart the bot so the new token takes effect.
+
 ### Interactive TUI-style menu
 
 If you prefer not to remember individual commands, you can launch a simple text-based menu:
@@ -242,6 +253,7 @@ From there you can:
 - View logs.
 - Run diagnostics.
 - Pull latest code for a bot (with optional restart).
+- Update a bot's Discord token.
 
 ### Update a bot from its GitHub repo
 

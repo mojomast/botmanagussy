@@ -91,6 +91,20 @@ def update_bot_entrypoint(bot_id: int, entrypoint: str) -> None:
         conn.commit()
 
 
+def update_bot_token(bot_id: int, discord_token: str) -> None:
+    updated = now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE bots
+            SET discord_token = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (discord_token, updated, bot_id),
+        )
+        conn.commit()
+
+
 def list_bots() -> List[sqlite3.Row]:
     with get_connection() as conn:
         cursor = conn.execute(

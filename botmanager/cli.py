@@ -389,6 +389,34 @@ def status_command(
     console.print(f"Status for {identifier!r}: {status}")
 
 
+@app.command("set-token")
+def set_token_command(
+    identifier: str = typer.Argument(..., help="Bot id or name"),
+    token: str = typer.Option(
+        ...,
+        prompt=True,
+        hide_input=True,
+        confirmation_prompt=True,
+        help="New Discord bot token for this bot",
+    ),
+) -> None:
+    row = None
+    if identifier.isdigit():
+        row = db.get_bot_by_id(int(identifier))
+    if row is None:
+        row = db.get_bot_by_name(identifier)
+    if row is None:
+        console.print(f"Bot not found: {identifier}")
+        raise typer.Exit(code=1)
+
+    bot_id = int(row["id"])
+    db.update_bot_token(bot_id, discord_token=token)
+    console.print(
+        f"Updated Discord token for bot {row['name']!r}. If it is currently running, "
+        "restart it so the new token takes effect."
+    )
+
+
 @app.command("menu")
 def menu() -> None:
     """Interactive text-based menu for managing bots.
@@ -408,6 +436,7 @@ def menu() -> None:
         console.print("[cyan]5[/cyan]) View bot logs")
         console.print("[cyan]6[/cyan]) Diagnose bot issues")
         console.print("[cyan]7[/cyan]) Pull latest code for a bot")
+        console.print("[cyan]8[/cyan]) Update bot token")
         console.print("[cyan]q[/cyan]) Quit menu")
 
         choice = console.input("Enter choice: ").strip().lower()
@@ -479,6 +508,22 @@ def menu() -> None:
             restart = restart_input in {"y", "yes"}
             try:
                 pull_command(identifier=identifier, rebase=rebase, restart=restart)
+            except typer.Exit:
+                pass
+        elif choice in {"8", "t", "token", "set-token"}:
+            identifier = console.input("Bot id or name to update token for: ").strip()
+            if not identifier:
+                continue
+            try:
+                new_token = typer.prompt(
+                    "New Discord bot token",
+                    hide_input=True,
+                    confirmation_prompt=True,
+                )
+            except Exception:
+                continue
+            try:
+                set_token_command(identifier=identifier, token=new_token)
             except typer.Exit:
                 pass
         elif choice in {"q", "quit", "exit"}:
