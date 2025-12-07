@@ -17,6 +17,8 @@ def get_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     if first_init:
         init_db(conn)
+    else:
+        migrate_db(conn)
     return conn
 
 
@@ -31,6 +33,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             entrypoint TEXT NOT NULL,
             discord_token TEXT NOT NULL,
             db_uri TEXT,
+            invite_url TEXT,
             status TEXT NOT NULL DEFAULT 'stopped',
             process_pid INTEGER,
             created_at TEXT NOT NULL,
@@ -41,6 +44,14 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_db(conn: sqlite3.Connection) -> None:
+    cursor = conn.execute("PRAGMA table_info(bots)")
+    columns = [row["name"] for row in cursor.fetchall()]
+    if "invite_url" not in columns:
+        conn.execute("ALTER TABLE bots ADD COLUMN invite_url TEXT")
+        conn.commit()
+
+
 def create_bot(
     name: str,
     local_path: str,
@@ -48,6 +59,7 @@ def create_bot(
     discord_token: str,
     repo_url: Optional[str] = None,
     db_uri: Optional[str] = None,
+    invite_url: Optional[str] = None,
 ) -> int:
     created = now_iso()
     with get_connection() as conn:
@@ -55,12 +67,12 @@ def create_bot(
             """
             INSERT INTO bots (
                 name, repo_url, local_path, entrypoint,
-                discord_token, db_uri, status,
+                discord_token, db_uri, invite_url, status,
                 process_pid, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'stopped', NULL, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'stopped', NULL, ?, ?)
             """,
-            (name, repo_url, local_path, entrypoint, discord_token, db_uri, created, created),
+            (name, repo_url, local_path, entrypoint, discord_token, db_uri, invite_url, created, created),
         )
         conn.commit()
         return int(cursor.lastrowid)

@@ -27,6 +27,31 @@ def _ensure_bots_root() -> Path:
     return BOTS_ROOT
 
 
+def _print_discord_setup_help() -> None:
+    console.print()
+    console.rule("Next steps in Discord Developer Portal")
+    console.print(
+        "- Use the bot token from the Bot tab (not the public key or client ID)."
+    )
+    console.print(
+        "- Under Privileged Gateway Intents, enable only what your bot actually needs "
+        "(typically: Message Content, and optionally Server Members / Presence)."
+    )
+    console.print("- When generating the invite link (OAuth2 -> URL Generator):")
+    console.print(
+        "  * Scopes: bot (and applications.commands if you use slash commands)."
+    )
+    console.print(
+        "  * Start with minimal Bot Permissions: View Channels, Read Message History, "
+        "Send Messages, Embed Links, Attach Files, Add Reactions."
+    )
+    console.print(
+        "  * Only grant stronger permissions (Manage Messages, Kick/Ban Members, "
+        "Manage Roles, Administrator) if the bot code actually needs them."
+    )
+    console.print()
+
+
 @app.command("list")
 def list_bots() -> None:
     rows = db.list_bots()
@@ -63,8 +88,18 @@ def add_local(
     entrypoint: str = typer.Option("main.py", help="Python file to run inside the bot folder"),
     token: str = typer.Option(..., prompt=True, hide_input=True, help="Discord bot token"),
     db_uri: Optional[str] = typer.Option(None, help="Database URI or path used by this bot"),
+    invite_url: Optional[str] = typer.Option(
+        None,
+        help="Optional stored Discord invite URL for this bot",
+    ),
 ) -> None:
     local_path = path.resolve()
+    if invite_url is None:
+        _print_discord_setup_help()
+        raw = console.input(
+            "Optional: paste the Discord invite URL for this bot (or leave blank): "
+        )
+        invite_url = raw.strip() or None
     bot_id = db.create_bot(
         name=name,
         repo_url=None,
@@ -72,6 +107,7 @@ def add_local(
         entrypoint=entrypoint,
         discord_token=token,
         db_uri=db_uri,
+        invite_url=invite_url,
     )
     console.print(f"Registered bot {name!r} with id {bot_id}")
 
@@ -84,6 +120,10 @@ def ingest_github(
     token: str = typer.Option(..., prompt=True, hide_input=True, help="Discord bot token"),
     db_uri: Optional[str] = typer.Option(None, help="Database URI or path used by this bot"),
     branch: Optional[str] = typer.Option(None, help="Branch to clone"),
+    invite_url: Optional[str] = typer.Option(
+        None,
+        help="Optional stored Discord invite URL for this bot",
+    ),
 ) -> None:
     root = _ensure_bots_root()
 
@@ -112,6 +152,13 @@ def ingest_github(
         console.print(f"git clone failed with exit code {exc.returncode}")
         raise typer.Exit(code=1)
 
+    if invite_url is None:
+        _print_discord_setup_help()
+        raw = console.input(
+            "Optional: paste the Discord invite URL for this bot (or leave blank): "
+        )
+        invite_url = raw.strip() or None
+
     bot_id = db.create_bot(
         name=name,
         repo_url=repo_url,
@@ -119,6 +166,7 @@ def ingest_github(
         entrypoint=entrypoint,
         discord_token=token,
         db_uri=db_uri,
+        invite_url=invite_url,
     )
     console.print(f"Ingested bot {name!r} from {repo_url} with id {bot_id}")
 
@@ -183,6 +231,7 @@ def info_command(
         "status",
         "process_pid",
         "repo_url",
+        "invite_url",
         "local_path",
         "entrypoint",
         "db_uri",

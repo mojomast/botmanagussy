@@ -12,6 +12,10 @@ from .db import (
 )
 
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+LOGS_ROOT = BASE_DIR / "logs"
+
+
 class BotNotFoundError(Exception):
     pass
 
@@ -62,13 +66,19 @@ def start_bot(identifier: str) -> int:
     if db_uri:
         env["BOT_DB_URI"] = db_uri
 
+    LOGS_ROOT.mkdir(parents=True, exist_ok=True)
+    log_file = LOGS_ROOT / f"bot_{bot_id}_{row['name']}.log"
+    log_handle = open(log_file, "a", encoding="utf-8")
+
     proc = subprocess.Popen(
         [sys.executable, str(entrypoint)],
         cwd=str(local_path),
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
     )
+
+    log_handle.close()
 
     update_bot_status_and_pid(bot_id, "running", proc.pid)
     return int(proc.pid)
