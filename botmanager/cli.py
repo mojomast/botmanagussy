@@ -49,6 +49,11 @@ def _print_discord_setup_help() -> None:
         "  * Only grant stronger permissions (Manage Messages, Kick/Ban Members, "
         "Manage Roles, Administrator) if the bot code actually needs them."
     )
+    console.print(
+        "- Any extra API keys (LLMs, tools, etc.) should be set as environment "
+        "variables or in a .env file loaded by the manager; they will be passed "
+        "through to the bot process."
+    )
     console.print()
 
 
