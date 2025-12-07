@@ -75,7 +75,20 @@ def create_bot(
             (name, repo_url, local_path, entrypoint, discord_token, db_uri, invite_url, created, created),
         )
         conn.commit()
-        return int(cursor.lastrowid)
+
+
+def update_bot_entrypoint(bot_id: int, entrypoint: str) -> None:
+    updated = now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE bots
+            SET entrypoint = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (entrypoint, updated, bot_id),
+        )
+        conn.commit()
 
 
 def list_bots() -> List[sqlite3.Row]:
@@ -99,7 +112,7 @@ def get_bot_by_id(bot_id: int) -> Optional[sqlite3.Row]:
 def get_bot_by_name(name: str) -> Optional[sqlite3.Row]:
     with get_connection() as conn:
         cursor = conn.execute(
-            "SELECT * FROM bots WHERE name = ?",
+            "SELECT * FROM bots WHERE LOWER(name) = LOWER(?)",
             (name,),
         )
         row = cursor.fetchone()

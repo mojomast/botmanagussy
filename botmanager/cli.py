@@ -201,6 +201,38 @@ def stop_command(
     console.print(f"Stopped bot {identifier!r}")
 
 
+@app.command("logs")
+def logs_command(
+    identifier: str = typer.Argument(..., help="Bot id or name"),
+    lines: int = typer.Option(50, help="Number of log lines to show"),
+) -> None:
+    row = None
+    if identifier.isdigit():
+        row = db.get_bot_by_id(int(identifier))
+    if row is None:
+        row = db.get_bot_by_name(identifier)
+    if row is None:
+        console.print(f"Bot not found: {identifier}")
+        raise typer.Exit(code=1)
+
+    bot_id = int(row["id"])
+    log_file = BASE_DIR / "logs" / f"bot_{bot_id}_{row['name']}.log"
+
+    if not log_file.exists():
+        console.print(f"No log file found for {identifier!r} at {log_file}")
+        raise typer.Exit(code=1)
+
+    try:
+        content = log_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        console.print(f"Failed to read log file: {exc}")
+        raise typer.Exit(code=1)
+
+    all_lines = content.splitlines()
+    for line in all_lines[-lines:]:
+        console.print(line)
+
+
 @app.command("pull")
 def pull_command(
     identifier: str = typer.Argument(..., help="Bot id or name"),
@@ -267,6 +299,84 @@ def pull_command(
         console.print(f"Started bot {identifier!r} with PID {pid}")
 
 
+@app.command("diagnose")
+def diagnose_command(
+    identifier: str = typer.Argument(..., help="Bot id or name"),
+    lines: int = typer.Option(100, help="Number of recent log lines to inspect"),
+) -> None:
+    row = None
+    if identifier.isdigit():
+        row = db.get_bot_by_id(int(identifier))
+    if row is None:
+        row = db.get_bot_by_name(identifier)
+    if row is None:
+        console.print(f"Bot not found: {identifier}")
+        raise typer.Exit(code=1)
+
+    bot_id = int(row["id"])
+    log_file = BASE_DIR / "logs" / f"bot_{bot_id}_{row['name']}.log"
+
+    if not log_file.exists():
+        console.print(f"No log file found for {identifier!r} at {log_file}")
+        raise typer.Exit(code=1)
+
+    try:
+        content = log_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        console.print(f"Failed to read log file: {exc}")
+        raise typer.Exit(code=1)
+
+    all_lines = content.splitlines()
+    recent = all_lines[-lines:]
+    text = "\n".join(recent)
+
+    console.print("Last log lines:")
+    for line in recent:
+        console.print(line)
+
+    if "PrivilegedIntentsRequired" in text:
+        console.print()
+        console.rule("Diagnosis")
+        console.print(
+            "Detected discord.errors.PrivilegedIntentsRequired. This means the bot "
+            "is requesting privileged gateway intents (Message Content, Server "
+            "Members, or Presence) that are not enabled in the Discord Developer "
+            "Portal for this application."
+        )
+        console.print(
+            "Go to https://discord.com/developers/applications -> select this app "
+            "-> Bot tab -> Privileged Gateway Intents, and enable the intents "
+            "that your code requests, then save changes and restart the bot."
+        )
+
+
+@app.command("set-entrypoint")
+def set_entrypoint_command(
+    identifier: str = typer.Argument(..., help="Bot id or name"),
+    entrypoint: str = typer.Argument(..., help="Python file to run inside the bot folder"),
+) -> None:
+    row = None
+    if identifier.isdigit():
+        row = db.get_bot_by_id(int(identifier))
+    if row is None:
+        row = db.get_bot_by_name(identifier)
+    if row is None:
+        console.print(f"Bot not found: {identifier}")
+        raise typer.Exit(code=1)
+
+    bot_id = int(row["id"])
+    local_path = Path(row["local_path"])
+    ep = Path(entrypoint)
+    if not ep.is_absolute():
+        ep = local_path / ep
+
+    if not ep.exists():
+        console.print(f"Warning: entrypoint {ep} does not exist on disk.")
+
+    db.update_bot_entrypoint(bot_id, entrypoint=entrypoint)
+    console.print(f"Updated entrypoint for {identifier!r} to {entrypoint!r}")
+
+
 @app.command("status")
 def status_command(
     identifier: str = typer.Argument(..., help="Bot id or name"),
@@ -277,6 +387,105 @@ def status_command(
         console.print(str(exc))
         raise typer.Exit(code=1)
     console.print(f"Status for {identifier!r}: {status}")
+
+
+@app.command("menu")
+def menu() -> None:
+    """Interactive text-based menu for managing bots.
+
+    Provides a simple loop around common commands: list, start/stop, status,
+    logs, diagnose, pull, and quit.
+    """
+
+    while True:
+        console.print()
+        console.rule("botmanagussy menu")
+        console.print("[bold]Select an option:[/bold]")
+        console.print("[cyan]1[/cyan]) List bots")
+        console.print("[cyan]2[/cyan]) Start bot")
+        console.print("[cyan]3[/cyan]) Stop bot")
+        console.print("[cyan]4[/cyan]) Status of a bot")
+        console.print("[cyan]5[/cyan]) View bot logs")
+        console.print("[cyan]6[/cyan]) Diagnose bot issues")
+        console.print("[cyan]7[/cyan]) Pull latest code for a bot")
+        console.print("[cyan]q[/cyan]) Quit menu")
+
+        choice = console.input("Enter choice: ").strip().lower()
+
+        if choice in {"1", "l", "list"}:
+            list_bots()
+        elif choice in {"2", "s", "start"}:
+            identifier = console.input("Bot id or name to start: ").strip()
+            if not identifier:
+                continue
+            try:
+                start_command(identifier=identifier)
+            except typer.Exit:
+                # Errors are already printed by the underlying command.
+                pass
+        elif choice in {"3", "x", "stop"}:
+            identifier = console.input("Bot id or name to stop: ").strip()
+            if not identifier:
+                continue
+            force_input = console.input("Force kill? [y/N]: ").strip().lower()
+            force = force_input in {"y", "yes"}
+            try:
+                stop_command(identifier=identifier, force=force)
+            except typer.Exit:
+                pass
+        elif choice in {"4", "status"}:
+            identifier = console.input("Bot id or name: ").strip()
+            if not identifier:
+                continue
+            try:
+                status_command(identifier=identifier)
+            except typer.Exit:
+                pass
+        elif choice in {"5", "logs"}:
+            identifier = console.input("Bot id or name: ").strip()
+            if not identifier:
+                continue
+            lines_raw = console.input("How many lines? [50]: ").strip()
+            try:
+                lines = int(lines_raw) if lines_raw else 50
+            except ValueError:
+                lines = 50
+            try:
+                logs_command(identifier=identifier, lines=lines)
+            except typer.Exit:
+                pass
+        elif choice in {"6", "d", "diagnose"}:
+            identifier = console.input("Bot id or name: ").strip()
+            if not identifier:
+                continue
+            lines_raw = console.input("How many recent lines to inspect? [100]: ").strip()
+            try:
+                lines = int(lines_raw) if lines_raw else 100
+            except ValueError:
+                lines = 100
+            try:
+                diagnose_command(identifier=identifier, lines=lines)
+            except typer.Exit:
+                pass
+        elif choice in {"7", "p", "pull"}:
+            identifier = console.input("Bot id or name to pull: ").strip()
+            if not identifier:
+                continue
+            rebase_input = console.input("Use git pull --rebase? [y/N]: ").strip().lower()
+            rebase = rebase_input in {"y", "yes"}
+            restart_input = console.input(
+                "If running, restart after pull? [y/N]: "
+            ).strip().lower()
+            restart = restart_input in {"y", "yes"}
+            try:
+                pull_command(identifier=identifier, rebase=rebase, restart=restart)
+            except typer.Exit:
+                pass
+        elif choice in {"q", "quit", "exit"}:
+            console.print("Exiting menu.")
+            break
+        else:
+            console.print("Unrecognized choice. Please select a listed option.")
 
 
 @app.command("info")

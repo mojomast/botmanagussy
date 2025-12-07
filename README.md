@@ -196,6 +196,53 @@ python -m botmanager info 1
 
 Prints detailed metadata for a bot: ID, name, status, PID, repo URL, local path, entrypoint, DB URI, and timestamps.
 
+### View logs for a bot
+
+```bash
+python -m botmanager logs chat-bot
+python -m botmanager logs chat-bot --lines 100
+```
+
+This prints the tail of the per-bot log file under `logs/` (by default, the last 50 lines; configurable with `--lines`).
+
+### Diagnose common issues
+
+```bash
+python -m botmanager diagnose chat-bot
+python -m botmanager diagnose chat-bot --lines 150
+```
+
+`diagnose` shows recent log lines and performs simple pattern-based checks. For example, if it detects `discord.errors.PrivilegedIntentsRequired`, it will explain that the bot is requesting privileged gateway intents (Message Content, Server Members, Presence) that are not enabled in the Discord Developer Portal, and point you to the Bot tab to toggle them on.
+
+### Fix an incorrect entrypoint
+
+If you registered a bot with the wrong entrypoint, you can fix it without touching the database:
+
+```bash
+python -m botmanager set-entrypoint chat-bot main.py
+# or, for a nested entrypoint:
+python -m botmanager set-entrypoint chat-bot src/bot.py
+```
+
+The manager will update the stored `entrypoint` for that bot. It will warn if the path you provide does not currently exist on disk.
+
+### Interactive TUI-style menu
+
+If you prefer not to remember individual commands, you can launch a simple text-based menu:
+
+```bash
+python -m botmanager menu
+```
+
+From there you can:
+
+- List bots.
+- Start/stop bots.
+- Check status.
+- View logs.
+- Run diagnostics.
+- Pull latest code for a bot (with optional restart).
+
 ### Update a bot from its GitHub repo
 
 For bots that were ingested from GitHub (i.e. have a `repo_url` and a `.git` directory):
