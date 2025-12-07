@@ -201,6 +201,72 @@ def stop_command(
     console.print(f"Stopped bot {identifier!r}")
 
 
+@app.command("pull")
+def pull_command(
+    identifier: str = typer.Argument(..., help="Bot id or name"),
+    rebase: bool = typer.Option(False, help="Use git pull --rebase"),
+    restart: bool = typer.Option(
+        False,
+        help="If the bot was running before the pull, restart it after a successful update",
+    ),
+) -> None:
+    row = None
+    if identifier.isdigit():
+        row = db.get_bot_by_id(int(identifier))
+    if row is None:
+        row = db.get_bot_by_name(identifier)
+    if row is None:
+        console.print(f"Bot not found: {identifier}")
+        raise typer.Exit(code=1)
+
+    local_path = Path(row["local_path"])
+    repo_url = row["repo_url"]
+
+    if not repo_url:
+        console.print("This bot does not have a repo_url recorded; nothing to pull.")
+        raise typer.Exit(code=1)
+
+    if not (local_path / ".git").exists():
+        console.print(f"No .git directory found in {local_path}; cannot run git pull.")
+        raise typer.Exit(code=1)
+
+    was_running = False
+    try:
+        status = get_bot_status(identifier)
+        was_running = status == "running"
+    except BotNotFoundError:
+        was_running = False
+
+    if was_running:
+        console.print(f"Stopping {identifier!r} before pulling latest changes...")
+        stop_bot(identifier, force=False)
+
+    console.print(f"Running git pull in {local_path}...")
+    cmd = ["git", "pull"]
+    if rebase:
+        cmd.append("--rebase")
+
+    try:
+        subprocess.run(cmd, cwd=str(local_path), check=True)
+    except FileNotFoundError:
+        console.print("git executable not found. Install git on this machine.")
+        raise typer.Exit(code=1)
+    except subprocess.CalledProcessError as exc:
+        console.print(f"git pull failed with exit code {exc.returncode}")
+        raise typer.Exit(code=1)
+
+    console.print(f"Successfully pulled latest changes for {identifier!r}")
+
+    if restart and was_running:
+        console.print(f"Restarting {identifier!r}...")
+        try:
+            pid = start_bot(identifier)
+        except BotNotFoundError as exc:
+            console.print(str(exc))
+            raise typer.Exit(code=1)
+        console.print(f"Started bot {identifier!r} with PID {pid}")
+
+
 @app.command("status")
 def status_command(
     identifier: str = typer.Argument(..., help="Bot id or name"),

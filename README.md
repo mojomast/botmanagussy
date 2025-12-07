@@ -31,6 +31,12 @@ A web dashboard can be layered on top later, but the core is a simple, scriptabl
   - `start`, `stop`, `status`, and `info` for each bot.
 - **Env-based configuration for bots**:
   - `DISCORD_TOKEN` and `BOT_DB_URI` are injected as env vars when a bot is started.
+ - **Per-bot logging**:
+   - Each bot's stdout/stderr is written to `logs/bot_<id>_<name>.log`.
+ - **Git pull updates**:
+   - `pull` can run `git pull` inside a bot's repo (with optional restart).
+ - **Optional invite URL tracking**:
+   - You can store the Discord invite URL alongside each bot for reference.
 
 This project is deliberately minimal and opinionated; it is meant as a playground for experimenting with multi-bot orchestration, LLM tool integrations, and future two-way communication between bots and the manager.
 
@@ -46,11 +52,12 @@ This project is deliberately minimal and opinionated; it is meant as a playgroun
   - `aiosqlite`, `discord.py`, `aiohttp`, `python-dotenv` – included for compatibility with typical Discord bots and async DB usage.
   - `gitpython`, `cryptography` – reserved for future enhancements (e.g. token encryption, advanced Git workflows).
 - **Data store**: SQLite file `manager.db` in the project root.
-  - Single table `bots` with columns such as `id`, `name`, `repo_url`, `local_path`, `entrypoint`, `discord_token`, `db_uri`, `status`, `process_pid`, timestamps.
+  - Single table `bots` with columns such as `id`, `name`, `repo_url`, `local_path`, `entrypoint`, `discord_token`, `db_uri`, `invite_url`, `status`, `process_pid`, timestamps.
 - **Process supervision**:
   - Uses `subprocess.Popen` to start each bot as its own Python process.
   - The bot’s working directory is set to its repo folder.
   - Environment variables are injected before launch.
+  - Each bot's output is streamed to a per-bot log file under `logs/`.
 - **Structure**:
   - `botmanager/` – Python package containing:
     - `cli.py` – Typer app with all CLI commands.
@@ -189,6 +196,28 @@ python -m botmanager info 1
 
 Prints detailed metadata for a bot: ID, name, status, PID, repo URL, local path, entrypoint, DB URI, and timestamps.
 
+### Update a bot from its GitHub repo
+
+For bots that were ingested from GitHub (i.e. have a `repo_url` and a `.git` directory):
+
+```bash
+python -m botmanager pull chat-bot
+
+# Use --rebase if you prefer rebasing local changes
+python -m botmanager pull chat-bot --rebase
+
+# If the bot is running, stop it, pull, and restart it
+python -m botmanager pull chat-bot --restart
+```
+
+`pull` will:
+
+- Look up the bot by id or name.
+- Ensure there is a recorded `repo_url` and a `.git` directory at `local_path`.
+- Stop the bot if it is currently running.
+- Run `git pull` (or `git pull --rebase` if requested) in the bot's repo.
+- Optionally restart the bot if `--restart` is set and it was previously running.
+
 ---
 
 ## Expectations for managed bots
@@ -210,6 +239,13 @@ To work smoothly with botmanagussy, each managed bot should:
 
 This keeps secrets and DB configuration in one place (the manager) and avoids scattering tokens across many `.env` files.
 
+Bots should also read any additional API keys they need (LLMs, tools, etc.) from environment variables, for example:
+
+```python
+REQUESTY_API_KEY = os.environ.get("REQUESTY_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+```
+
 ---
 
 ## Per-bot databases
@@ -223,6 +259,25 @@ Each bot can have its own database connection string stored as `db_uri` in the m
 Future ideas (not implemented yet):
 
 - Helper commands like `db-shell`, `db-backup`, or `db-migrate` that operate on a bot’s DB using its `db_uri`.
+
+---
+
+## Environment and API keys
+
+When you run `python -m botmanager`, botmanagussy will load environment variables from a `.env` file in the project root (using `python-dotenv`), and then propagate its environment to all bot processes.
+
+This means you can define API keys and shared configuration once at the manager level, for example in `.env`:
+
+```env
+# Example .env
+REQUESTY_API_KEY=your-requesty-key
+OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+```
+
+and inside each bot, simply read them with `os.environ` or `os.getenv`.
+
+You can also define per-bot keys using naming conventions, e.g. `DMUSSY_OPENAI_API_KEY`, and only the corresponding bot will use that variable in its code.
 
 ---
 
